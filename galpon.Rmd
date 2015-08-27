@@ -1,0 +1,116 @@
+---
+title: "Index"
+author: "Facundo Calcagno"
+date: "August 24, 2015"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+#Ventas por día
+```{r, echo=FALSE, warning=FALSE}
+library(RMySQL)  
+library(lubridate)
+drv = dbDriver("MySQL")
+con = dbConnect(drv,user="datamining",password="datamining",dbname="galpon.administrativo",host="galpon.cloudapp.net")
+  #dbListTables(con)
+ sales<-dbReadTable(con, "sales")
+ sales2<-sales[sales$ammount<50000,]
+ 
+sales2$sale<-1
+agg_sales<-aggregate(ammount~creation_date,data=sales2,sum, na.rm=TRUE)
+agg_sales_by_date<-aggregate(sale~creation_date,data=sales2,sum, na.rm=TRUE)
+
+agg_sales$creation_date <- strptime(agg_sales$creation_date,"%Y-%m-%d")
+agg_sales_by_date$creation_date <- strptime(agg_sales_by_date$creation_date,"%Y-%m-%d")
+
+start = as.Date("2014/07/31")
+full <- seq(start, by="1 day", length=366)
+full<-as.POSIXlt(full,format="+%Y-%m-%d")
+
+
+
+ventas<-data.frame(Date=full,value=with(full,agg_sales$ammount[match(full, agg_sales$creation_date )]))
+
+ventas_por_dia<-data.frame(Date=full,value=with(full,agg_sales_by_date$sale[match(full, agg_sales_by_date$creation_date )]))
+
+ventas$weeks <- week(ventas$Date)
+ventas_por_dia$weeks <- week(ventas_por_dia$Date)
+value_week<-aggregate(value~weeks,data=ventas,sum, na.rm=TRUE)
+can_week<-aggregate(value~weeks,data=ventas_por_dia,sum, na.rm=TRUE)
+
+```
+##Suma Total de Ventas en el último año##
+```{r, echo=FALSE }
+sum(ventas$value,na.rm = TRUE)
+```
+
+#Ventas por día#
+```{r, echo=FALSE }
+library(lattice)  
+library(gridExtra) 
+plot1<-xyplot(value ~ Date,data=ventas,type="l", main="Ventas por dia",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
+    panel.abline(lm(y~x), col='#0080ff')})
+
+plot2<-xyplot(value ~ Date,data=ventas_por_dia,type="l", main="Cantidad de Ventas por dia",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
+    panel.abline(lm(y~x), col='#0080ff')})
+
+plot3<-xyplot(value ~ weeks,data=value_week[1:49,],type="l", main="Ventas por semana",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
+    panel.abline(lm(y~x), col='#0080ff')})
+
+plot4<-xyplot(value ~ weeks,data=can_week[1:49,],type="l", main="Cantidad de Ventas por semana",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
+    panel.abline(lm(y~x), col='#0080ff')})
+
+grid.arrange(plot1,plot3,plot2,plot4,nrow=2, ncol=2)
+
+
+```
+
+#Efectividad de Ventas por Marca#
+```{r, echo=FALSE,cache=TRUE; warning=FALSE, warning=FALSE }
+
+query <- function(...) dbGetQuery(con, ...)
+
+
+a<-query("SELECT i.name,i.price,i.consigner_cost,t.name as item,b.name as brand, st.name as state,1 as consig, (s.id IS NOT NULL) as  sale
+from items i
+      inner join item_types as t on i.item_type_id=t.id
+      inner join item_brands as b on i.item_brand_id=b.id
+      inner join item_states as st on i.item_state_id=st.id
+      left join sales_items as s on i.id=s.item_id;")
+
+brand_sales<-aggregate(a$sale,by=list(a$brand),sum, na.rm=TRUE)
+brand_consig<-aggregate(a$consig,by=list(a$brand),sum, na.rm=TRUE)
+names(brand_sales)=c('brand','sales')
+names(brand_consig)=c('brand','total')
+b=data.frame(brand_sales,brand_consig)
+
+c<-b[with(b, order(-sales)), ]
+c$efectivity <- c$sales/c$total
+d<-c[c$total>100,]
+d<-d[with(d, order(-efectivity)), ]
+d$brand.1<-NULL
+d$efectivity<-as.double(d$efectivity)
+d[1:20,]
+```
+
+#Prendas vendidas y Ventas  por Marca y tipo de prenda #
+```{r, echo=FALSE, warning=FALSE, warning=FALSE }
+
+item_sales_cash<-aggregate(a$price,by=list(a$brand,a$item),sum, na.rm=TRUE)
+item_sales_cant<-aggregate(a$sale,by=list(a$brand,a$item),sum, na.rm=TRUE)
+names(item_sales_cash)=c('Brand','item','price')
+names(item_sales_cant)=c('Brand','item','cant')
+item_sales=data.frame(item_sales_cash,item_sales_cant)
+item_sales$'Brand.1'<-NULL
+item_sales$item.1<-NULL
+item_sales2<-item_sales[item_sales$cant>10,]
+item_sales2<-item_sales2[item_sales2$Brand!="sin",]
+item_sales2<-item_sales2[item_sales2$item!="undefined",]
+item_sales2$price_avg<-item_sales2$price/item_sales2$cant
+item_sales2<-item_sales2[with(item_sales2, order(-price_avg)), ]
+item_sales2[1:20,]
+
+```
+
+  
