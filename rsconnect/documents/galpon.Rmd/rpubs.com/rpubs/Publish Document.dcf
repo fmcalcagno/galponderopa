@@ -1,0 +1,7 @@
+name: Publish Document
+account: rpubs
+server: rpubs.com
+bundleId:
+        https://api.rpubs.com/api/v1/document/105842/fad0f81c5c1f47348fd2c64db56aed78
+url: http://rpubs.com/fmcalcagno/105842
+when: 1440648662.07487
