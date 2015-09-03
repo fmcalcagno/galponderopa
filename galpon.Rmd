@@ -1,14 +1,14 @@
 ---
-title: "Index"
+title: "Galpon de Ropa"
 author: "Facundo Calcagno"
-date: "August 24, 2015"
 output: 
   html_document: 
     keep_md: yes
 ---
 
-Ventas por día
-```{r, echo=FALSE, warning=FALSE}
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 library(RMySQL)  
 drv = dbDriver("MySQL")
 con = dbConnect(drv,user="datamining",password="datamining",dbname="galpon.administrativo",host="galpon.cloudapp.net")
@@ -34,62 +34,272 @@ ventas<-data.frame(Date=full,value=with(full,agg_sales$ammount[match(full, agg_s
 ventas_por_dia<-data.frame(Date=full,value=with(full,agg_sales_by_date$sale[match(full, agg_sales_by_date$creation_date )]))
 library(lubridate)
 ventas$weeks <- week(ventas$Date)
+ventas$month<-format(ventas$Date,"%Y%m")
 ventas_por_dia$weeks <- week(ventas_por_dia$Date)
-sum(ventas$value,na.rm = TRUE)
+ventas_por_dia$month<- format(ventas_por_dia$Date,"%Y%m")
 value_week<-aggregate(value~weeks,data=ventas,sum, na.rm=TRUE)
+value_month<-aggregate(value~month,data=ventas,sum, na.rm=TRUE)
 can_week<-aggregate(value~weeks,data=ventas_por_dia,sum, na.rm=TRUE)
+can_month<-aggregate(value~month,data=ventas_por_dia,sum, na.rm=TRUE)
+month<-data.frame(value_month,can_month)
+month$month.1<-NULL
+names(month)=c('month','Facturacion','Cantidad')
+month$PrecioporItem<-month$Facturacion/month$Cantidad
 
 ```
+#Facturación Total del Galpon#
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+  sum(ventas$value,na.rm = TRUE)
+```
+#Facturación por Mes del Galpon# 
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+month
+```
+ 
+
 #Ventas por día#
-```{r, echo=FALSE }
-library(lattice)  
-par(mfrow=c(2,2))
-xyplot(value ~ Date,data=ventas,type="l", main="Ventas por dia",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
-    panel.abline(lm(y~x), col='#0080ff')})
 
-xyplot(value ~ Date,data=ventas_por_dia,type="l", main="Cantidad de Ventas por dia",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
-    panel.abline(lm(y~x), col='#0080ff')})
-
-xyplot(value ~ weeks,data=value_week[1:49,],type="l", main="Ventas por semana",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
-    panel.abline(lm(y~x), col='#0080ff')})
-
-xyplot(value ~ weeks,data=can_week[1:49,],type="l", main="Cantidad de Ventas por semana",grid = TRUE,panel = function(x, y, ...) {panel.xyplot(x, y, ...)
-    panel.abline(lm(y~x), col='#0080ff')})
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+library(ggplot2)
 
 
+p1<-ggplot(ventas, aes(Date, value)) + geom_line() + geom_smooth(fill="Grey") + xlab("Fecha") + ylab("$ Ventas por dia")
+
+
+p3<-ggplot(ventas_por_dia, aes(Date, value)) + geom_line() + geom_smooth(fill="Grey") + xlab("Fecha") + ylab("Cantidad de Ventas por dia")
+
+p2<-ggplot(value_week[1:49,], aes(weeks, value)) + geom_line() + geom_smooth(fill="Grey") + xlab("Fecha") + ylab("$ de Ventas por semana")
+p4<-ggplot(can_week[1:49,], aes(weeks, value)) + geom_line() + geom_smooth(fill="Grey") + xlab("Fecha") + ylab("Cantidad de Ventas por semana")
+p1
+p3
 ```
 
+#Ventas por semana#
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+p2
+p4
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 #Efectividad de Ventas por Marca#
-```{r, echo=FALSE, warning=FALSE, warning=FALSE }
-
-
 query <- function(...) dbGetQuery(con, ...)
 
 
-a<-query("SELECT i.name,i.price,i.consigner_cost,b.name as brand, st.name as state,1 as consig, (s.id IS NOT NULL) as  sale
+a<-query("SELECT i.name,i.price,i.consigner_cost,b.name as brand,t.name as item, st.name as state,1 as consig, (s.id IS NOT NULL) as  sale
 from items i
       inner join item_types as t on i.item_type_id=t.id
       inner join item_brands as b on i.item_brand_id=b.id
       inner join item_states as st on i.item_state_id=st.id
       left join sales_items as s on i.id=s.item_id;")
 
+  #dbListTables(con)
+ sales<-dbReadTable(con, "consignations")
+
+
 brand_sales<-aggregate(a$sale,by=list(a$brand),sum, na.rm=TRUE)
 brand_consig<-aggregate(a$consig,by=list(a$brand),sum, na.rm=TRUE)
 names(brand_sales)=c('brand','sales')
 names(brand_consig)=c('brand','total')
 b=data.frame(brand_sales,brand_consig)
+b[b$brand=="paula cahen d anvers",]$sales=b[b$brand=="paula cahen d anvers",]$sales+b[b$brand=="paula cahen danvers",]$sales
+b[b$brand=="paula cahen d anvers",]$total=b[b$brand=="paula cahen d anvers",]$total+b[b$brand=="paula cahen danvers",]$total
+b[b$brand=="paula cahen danvers",]$total<-0
+b[b$brand=="paula cahen danvers",]$sales<-0
 
 c<-b[with(b, order(-sales)), ]
 c$efectivity <- c$sales/c$total
-d<-c[c$total>100,]
+d<-c[c$total>70,]
 d<-d[with(d, order(-efectivity)), ]
 d$brand.1<-NULL
-library(xtable)
-sji.viewSPSS(efc)
+
 d$efectivity<-as.double(d$efectivity)
-print.xtable(d[1:20])
+  e<-d[!(d$brand %in% c('sin','febo','')),]
+marcasmasefectivas<-e
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE,cache=TRUE}
+
+
+brand_item_sales<-aggregate(a$price,by=list(a$brand,a$item),sum, na.rm=TRUE)
+
+brand_item_consig<-aggregate(a$consigner_cost,by=list(a$brand,a$item),sum, na.rm=TRUE)
+names(brand_item_sales)=c('brand','type','value')
+names(brand_item_consig)=c('brand','type','cost')
+brand_item<-data.frame(brand_item_sales,brand_item_consig)
+brand_item$brand.1<-NULL
+brand_item$type.1<-NULL
+
+brand_item<-brand_item[(brand_item$brand !="sin"),]
+brand_item<-brand_item[brand_item$type !="undefined",]
+brand_item$ganancia=brand_item$value-brand_item$cost
+```
+
+##Ganancia por Marca/tipo de prenda##
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+brand_item<-brand_item[with(brand_item, order(-ganancia)), ]
+brand_item[1:15,]
+```
+
+##Facturacion por Marca/tipo de prenda##
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+brand_item<-brand_item[with(brand_item, order(-value)), ]
+brand_item[1:15,]
+```
+##Costo por Marca/tipo de prenda##
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+brand_item<-brand_item[with(brand_item, order(-cost)), ]
+brand_item[1:15,]
+```
+#Tiempo promedio de venta#
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE,cache=TRUE}
+
+time<-query("SELECT  i.name,i.price,i.consigner_cost,b.name as brand,t.name as item, st.name as state,c.creation_date,s.sale_date
+from items i
+      inner join item_types as t on i.item_type_id=t.id
+      inner join item_brands as b on i.item_brand_id=b.id
+      inner join item_states as st on i.item_state_id=st.id
+      inner join sales_items as s on i.id=s.item_id
+      inner join consignations c on i.consignation_id=c.id;
+      ")
+
+time$timetosell<-difftime(time$sale_date,time$creation_date,units="days")
+
+#porque hay time to sell negativos??
+
+time_pos<-time[time$timetosell>=0,] 
+time_pos<-time_pos[time$brand!="sin",]
+
+#me tengo qeu quedar con las 50 marcas que mas se venden
+
+brand_timetosell<-aggregate(time_pos$timetosell,by=list(time_pos$brand),mean, na.rm=TRUE)
+type_timetosell<-aggregate(time_pos$timetosell,by=list(time_pos$item),mean, na.rm=TRUE)
+names(brand_timetosell)=c("brand","timetosell")
+names(type_timetosell)=c("item","timetosell")
 
 
 ```
+#Marcas con mayor tiempo promedio para la venta#
+###Dias para la venta###
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+btts<-brand_timetosell[brand_timetosell$brand %in% marcasmasefectivas$brand, ]
+btts<-btts[with(btts, order(-timetosell)), ]
+#btts[1:10,]
+
+```
+#Marcas con menor tiempo promedio para la venta#
+###Dias para la venta###
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+btts<-btts[with(btts, order(timetosell)), ]
+#btts[1:10,]
+
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+#btts<-brand_timetosell[brand_timetosell$brand %in% marcasmasefectivas$brand, ]
+
+#hacer un gráfico por marca que incluya, tiempo de venta, precio promedio cantidad de prendas como dimensiones
+
+#type_timetosell<-type_timetosell[with(type_timetosell, order(-timetosell)), ]
+#type_timetosell[1:15,]
+
+```
   
-  
+#Tipos de prenda con menor tiempo promedio para la venta
+###Dias para la venta###
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+#btts<-brand_timetosell[brand_timetosell$brand %in% marcasmasefectivas$brand, ]
+type_timetosell<-type_timetosell[with(type_timetosell, order(timetosell)), ]
+
+
+```
+
+
+#Indicadores por Marca#
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+ 
+   #dbListTables(con)
+a<-query("SELECT i.name,i.price,i.consigner_cost,b.name as brand,t.name as item, st.name as state,1 as consig, (s.id IS NOT NULL) as  sale,c.creation_date,s.sale_date
+from items i
+      inner join item_types as t on i.item_type_id=t.id
+      inner join item_brands as b on i.item_brand_id=b.id
+      inner join item_states as st on i.item_state_id=st.id
+      left join sales_items as s on i.id=s.item_id
+      inner join consignations c on i.consignation_id=c.id;")
+
+  #dbListTables(con)
+ 
+
+
+a[a$brand=="paula cahen danvers",]$name<-"paula cahen d anvers"
+
+a$timetosell<-difftime(a$sale_date,a$creation_date,units="days")
+
+
+brand_sales<-aggregate(a$sale,by=list(a$brand),sum, na.rm=TRUE)
+brand_consig<-aggregate(a$consig,by=list(a$brand),sum, na.rm=TRUE)
+
+brand_avg_price<-aggregate(a$price,by=list(a$brand),mean,na.rm=TRUE)
+brand_avg_cost<-aggregate(a$consigner_cost,by=list(a$brand),mean,na.rm=TRUE)
+
+brand_avg_win<-aggregate((a$price-a$consigner_cost),by=list(a$brand),mean,na.rm=TRUE)
+
+brand_timetosell<-aggregate(a$timetosell,by=list(a$brand),mean, na.rm=TRUE)
+
+
+b=data.frame(brand_sales,brand_consig,brand_avg_price,brand_avg_cost,brand_avg_win,brand_timetosell)
+
+
+b$Group.1.1<-NULL
+b$Group.1.2<-NULL
+b$Group.1.3<-NULL
+b$Group.1.4<-NULL
+b$Group.1.5<-NULL
+
+
+
+
+names(b)=c('brand','sales','buys','avg_price','avg_cost','avg_win','timetosell')
+
+
+b<-b[!(b$brand %in% c('sin','febo','sin marca')),]
+
+
+
+
+b$efectivity <- b$sales/b$buys
+final<-b[b$buys>70,]
+final<-final[with(final, order(-efectivity)), ]
+
+
+
+final$avg_win<-as.numeric(final$avg_win)
+final$timetosell<-as.numeric(final$timetosell)
+
+  row.names(final)=final$brand
+final$brand<-NULL
+```
+#Tabla de Marcas#
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+final1<-final
+final1[,'avg_price']=round(final1[,'avg_price'],1)
+final1[,'avg_cost']=round(final1[,'avg_cost'],1)
+final1[,'avg_win']=round(final1[,'avg_win'],1)
+final1[,'timetosell']=round(final1[,'timetosell'],1)
+final1[,'efectivity']=round(final1[,'efectivity'],2)
+final1
+
+final1<-final1[,5:7]
+```
+#Cluster de Marcas#
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+library(FactoMineR)
+par(mfrow=c(1,1))
+res.pca = PCA(final1[,],ncp = 7, graph =  TRUE)
+#res.pca$var
+#dimensiones
+#par(mar = rep(2, 4))
+plot(res.pca,choix = c("ind","var"),,select="contrib 20")
+  ```
+
+
